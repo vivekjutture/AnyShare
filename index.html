@@ -946,20 +946,14 @@
 
     <script>
       // ─── ICE / STUN CONFIG ───────────────────────────────────────────────────────
-      // Multiple free public STUN servers for maximum compatibility across networks,
-      // firewalls, NAT types, and mobile carriers (4G/5G). No signup needed.
       const ICE_CONFIG = {
         config: {
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun2.l.google.com:19302" },
-            { urls: "stun:stun3.l.google.com:19302" },
-            { urls: "stun:stun4.l.google.com:19302" },
-            { urls: "stun:stun.cloudflare.com:3478" },
-            { urls: "stun:stun.stunprotocol.org:3478" },
           ],
-          iceCandidatePoolSize: 10,
+          iceTransportPolicy: "all",
+          iceCandidatePoolSize: 2,
         },
         debug: 0,
       };
@@ -1103,6 +1097,7 @@
 
         peer.on("connection", (c) => {
           sendConn = c;
+          sendConn.serialization = "binary";
           sendConn.on("open", () => {
             setSendStatus("connected", "🟢 Connected! Ready to send.");
             document.getElementById("qr-section").style.display = "none";
@@ -1165,11 +1160,26 @@
         if (code.length < 4) return showToast("Enter the session code first.");
         setRecvStatus("connecting", "Connecting…");
 
+        // 10-second timeout — if not connected by then, show retry
+        const timeoutId = setTimeout(() => {
+          if (conn && conn.open) return; // already connected, ignore
+          setRecvStatus(
+            "error",
+            "Taking too long. Check the code and try again.",
+          );
+          showRetryButton();
+        }, 10000);
+
         const recvPeer = new Peer(ICE_CONFIG);
         recvPeer.on("open", () => {
-          conn = recvPeer.connect(code, { reliable: true });
+          conn = recvPeer.connect(code, {
+            reliable: true,
+            serialization: "binary",
+          });
           conn.on("open", () => {
-            setRecvStatus("connected", `🟢 Connected to sender`);
+            clearTimeout(timeoutId);
+            hideRetryButton();
+            setRecvStatus("connected", "🟢 Connected to sender");
             document.getElementById("recv-connect-form").style.display = "none";
             stopQRScan();
             resetIdleTimer();
@@ -1177,20 +1187,46 @@
             startItemTimer();
           });
           conn.on("data", (data) => {
-            resetIdleTimer(); // any data = activity
+            resetIdleTimer();
             handleReceived(data);
           });
-          conn.on("error", () =>
-            setRecvStatus("error", "Failed to connect. Check the code."),
-          );
+          conn.on("error", () => {
+            clearTimeout(timeoutId);
+            setRecvStatus("error", "Failed to connect. Check the code.");
+            showRetryButton();
+          });
           conn.on("close", () => {
             setRecvStatus("error", "Sender disconnected.");
             stopIdleWatcher();
           });
         });
-        recvPeer.on("error", (e) =>
-          setRecvStatus("error", "Error: " + e.message),
-        );
+        recvPeer.on("error", (e) => {
+          clearTimeout(timeoutId);
+          setRecvStatus("error", "Error: " + e.message);
+          showRetryButton();
+        });
+      }
+
+      function showRetryButton() {
+        let btn = document.getElementById("retry-btn");
+        if (!btn) {
+          btn = document.createElement("button");
+          btn.id = "retry-btn";
+          btn.className = "btn btn-secondary";
+          btn.style.marginTop = "12px";
+          btn.textContent = "🔄 Try Again";
+          btn.onclick = () => {
+            btn.remove();
+            connectToPeer();
+          };
+          document.getElementById("recv-connect-form").appendChild(btn);
+          document.getElementById("recv-connect-form").style.display = "block";
+        }
+      }
+
+      function hideRetryButton() {
+        const btn = document.getElementById("retry-btn");
+        if (btn) btn.remove();
       }
 
       // ─── SEND ────────────────────────────────────────────────────────────────────
