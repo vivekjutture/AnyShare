@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AnyShare — Frictionless device sharing</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0e0e11;
+      --surface: #17171c;
+      --surface2: #1f1f27;
+      --border: #2a2a35;
+      --accent: #7c6bff;
+      --accent2: #a78bfa;
+      --text: #e8e8f0;
+      --muted: #7c7c96;
+      --success: #34d399;
+      --danger: #f87171;
+      --warning: #fbbf24;
+      --radius: 14px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 15px; line-height: 1.6; }
+    body { display: flex; flex-direction: column; min-height: 100vh; }
+
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 32px; border-bottom: 1px solid var(--border); }
+    .logo { font-family: 'Space Grotesk', sans-serif; font-size: 1.2rem; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: -0.5px; }
+    .badge { font-size: 11px; font-weight: 500; color: var(--muted); border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px; letter-spacing: 0.5px; }
+
+    main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
+
+    .hero { text-align: center; margin-bottom: 40px; }
+    .hero h1 { font-family: 'Space Grotesk', sans-serif; font-size: clamp(1.8rem, 5vw, 3rem); font-weight: 700; letter-spacing: -1.5px; line-height: 1.1; margin-bottom: 12px; }
+    .hero h1 span { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero p { color: var(--muted); font-size: 0.95rem; max-width: 400px; margin: 0 auto; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); width: 100%; max-width: 520px; overflow: hidden; }
+
+    /* IDLE BANNER */
+    .idle-banner {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: rgba(251, 191, 36, 0.08);
+      border-bottom: 1px solid rgba(251, 191, 36, 0.2);
+      font-size: 12px;
+      color: var(--warning);
+    }
+    .idle-banner.show { display: flex; }
+    .idle-banner strong { font-weight: 600; }
+
+    /* TABS */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); }
+    .tab { flex: 1; padding: 14px; background: none; border: none; color: var(--muted); font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; border-bottom: 2px solid transparent; letter-spacing: 0.3px; }
+    .tab.active { color: var(--accent2); border-bottom-color: var(--accent); background: rgba(124, 107, 255, 0.05); }
+    .tab:hover:not(.active) { color: var(--text); background: var(--surface2); }
+
+    .panel { display: none; padding: 28px; }
+    .panel.active { display: block; }
+
+    /* STATUS BAR */
+    .status-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 20px; padding: 10px 14px; background: var(--surface2); border-radius: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+    .dot.connecting { background: var(--warning); animation: pulse 1s infinite; }
+    .dot.connected { background: var(--success); }
+    .dot.error { background: var(--danger); }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* QR */
+    .qr-section { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    #qrcode { padding: 16px; background: #fff; border-radius: 12px; display: inline-block; }
+    #qrcode img, #qrcode canvas { display: block; }
+    .code-display { text-align: center; }
+    .code-display label { display: block; font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+    .code-value { font-family: 'Space Grotesk', sans-serif; font-size: 2rem; font-weight: 700; letter-spacing: 6px; color: var(--text); }
+    .copy-btn { font-size: 12px; color: var(--accent2); background: none; border: none; cursor: pointer; padding: 4px 8px; margin-top: 4px; border-radius: 6px; transition: background 0.15s; }
+    .copy-btn:hover { background: rgba(124,107,255,0.1); }
+
+    /* FORM */
+    label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
+    input[type="text"], input[type="password"], textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; color: var(--text); font-family: 'Inter', sans-serif; font-size: 14px; outline: none; transition: border-color 0.2s; }
+    input:focus, textarea:focus { border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 100px; }
+    .input-row { display: flex; gap: 8px; }
+    .input-row input { flex: 1; }
+
+    /* BUTTONS */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; border: none; transition: all 0.2s; }
+    .btn-primary { background: var(--accent); color: #fff; width: 100%; }
+    .btn-primary:hover { background: #6b5ce7; transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); width: 100%; }
+    .btn-secondary:hover { border-color: var(--accent); }
+
+    /* TYPE SWITCHER */
+    .type-switcher { display: flex; gap: 6px; margin-bottom: 20px; }
+    .type-btn { flex: 1; padding: 9px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-size: 13px; cursor: pointer; transition: all 0.15s; font-family: 'Inter', sans-serif; }
+    .type-btn.active { background: rgba(124, 107, 255, 0.15); border-color: var(--accent); color: var(--accent2); }
+
+    .send-form > * + * { margin-top: 16px; }
+
+    /* FILE DROP */
+    .file-drop { border: 2px dashed var(--border); border-radius: 12px; padding: 32px 20px; text-align: center; cursor: pointer; transition: all 0.2s; color: var(--muted); font-size: 14px; }
+    .file-drop:hover, .file-drop.dragover { border-color: var(--accent); background: rgba(124, 107, 255, 0.05); color: var(--text); }
+    .file-drop .icon { font-size: 2rem; margin-bottom: 10px; }
+    input[type="file"] { display: none; }
+    .file-selected { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--surface2); border-radius: 10px; border: 1px solid var(--border); }
+    .file-icon { font-size: 1.5rem; }
+    .file-info { flex: 1; min-width: 0; }
+    .file-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-size { font-size: 11px; color: var(--muted); }
+    .remove-file { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.1rem; padding: 4px; }
+    .remove-file:hover { color: var(--danger); }
+
+    /* PROGRESS */
+    .progress-wrap { display: none; margin-top: 12px; }
+    .progress-wrap.show { display: block; }
+    .progress-bar-bg { height: 6px; background: var(--surface2); border-radius: 999px; overflow: hidden; margin-bottom: 6px; }
+    .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 999px; transition: width 0.1s; width: 0%; }
+    .progress-label { font-size: 12px; color: var(--muted); }
+
+    /* RECEIVED */
+    .received-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .received-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      position: relative;
+      transition: opacity 0.3s;
+    }
+
+    .received-item.expiring { border-color: rgba(248, 113, 113, 0.4); }
+    .received-item.expired { opacity: 0.4; pointer-events: none; }
+
+    /* EXPIRY PROGRESS BAR at top of item */
+    .expiry-bar-wrap {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: 10px 10px 0 0;
+      overflow: hidden;
+      background: var(--border);
+    }
+    .expiry-bar {
+      height: 100%;
+      background: var(--success);
+      transition: width 1s linear, background 0.5s;
+      width: 100%;
+    }
+
+    .received-item-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; margin-top: 6px; }
+    .received-type { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; color: var(--accent2); }
+    .received-meta { display: flex; align-items: center; gap: 8px; }
+    .received-time { font-size: 11px; color: var(--muted); }
+    .expiry-countdown { font-size: 11px; font-weight: 600; color: var(--success); font-variant-numeric: tabular-nums; }
+    .expiry-countdown.warning { color: var(--warning); }
+    .expiry-countdown.danger { color: var(--danger); }
+
+    .received-content { font-size: 13px; word-break: break-all; color: var(--text); }
+    .received-content.password { font-family: monospace; letter-spacing: 2px; background: var(--surface); padding: 6px 10px; border-radius: 6px; }
+    .received-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+    .btn-small { font-size: 12px; padding: 6px 12px; border-radius: 7px; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-family: 'Inter', sans-serif; transition: all 0.15s; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+    .btn-small:hover { border-color: var(--accent); color: var(--accent2); }
+    .btn-small.success { border-color: var(--success); color: var(--success); }
+    .btn-small.download { border-color: var(--accent); color: var(--accent2); }
+
+    /* IDLE OVERLAY */
+    .idle-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(14, 14, 17, 0.85);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .idle-overlay.show { display: flex; }
+    .idle-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+      text-align: center;
+      max-width: 360px;
+      width: 90%;
+    }
+    .idle-modal .icon { font-size: 2.5rem; margin-bottom: 16px; }
+    .idle-modal h2 { font-family: 'Space Grotesk', sans-serif; font-size: 1.3rem; margin-bottom: 8px; }
+    .idle-modal p { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+
+    /* EMPTY STATE */
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .empty-state p { font-size: 13px; }
+
+    /* DIVIDER */
+    .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; margin: 20px 0; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* TOAST */
+    .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; font-size: 13px; color: var(--text); box-shadow: 0 8px 32px rgba(0,0,0,0.4); transition: transform 0.3s ease; z-index: 999; white-space: nowrap; }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    footer { text-align: center; padding: 24px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+    footer a { color: var(--accent2); text-decoration: none; }
+
+    @media (max-width: 560px) { nav { padding: 16px 20px; } .panel { padding: 20px; } .code-value { font-size: 1.6rem; letter-spacing: 4px; } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">⚡ AnyShare</div>
+  <div class="badge">P2P · Encrypted · Free</div>
+</nav>
+
+<main>
+  <div class="hero">
+    <h1>Share anything,<br><span>instantly.</span></h1>
+    <p>Send passwords, text, and files between devices — no installs, no accounts, no servers.</p>
+  </div>
+
+  <div class="card">
+    <!-- IDLE WARNING BANNER -->
+    <div class="idle-banner" id="idle-banner">
+      ⏱ <span><strong>Idle warning</strong> — connection will auto-disconnect in <span id="idle-countdown"></span>s</span>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('send')">📤 Send</button>
+      <button class="tab" onclick="switchTab('receive')">📥 Receive</button>
+    </div>
+
+    <!-- SEND PANEL -->
+    <div class="panel active" id="panel-send">
+      <div class="status-bar">
+        <div class="dot" id="send-dot"></div>
+        <span id="send-status">Generating your session…</span>
+      </div>
+
+      <div class="qr-section" id="qr-section">
+        <div id="qrcode"></div>
+        <div class="code-display">
+          <label>Session Code</label>
+          <div class="code-value" id="code-display">——</div>
+          <button class="copy-btn" onclick="copyCode()">Copy code</button>
+        </div>
+      </div>
+
+      <div class="divider" id="waiting-divider">waiting for receiver to connect</div>
+
+      <div class="send-form" id="send-form" style="display:none">
+        <div class="type-switcher">
+          <button class="type-btn active" onclick="setType('text', this)">📝 Text</button>
+          <button class="type-btn" onclick="setType('password', this)">🔑 Password</button>
+          <button class="type-btn" onclick="setType('file', this)">📎 File</button>
+        </div>
+
+        <div id="input-text">
+          <label>Message</label>
+          <textarea id="text-input" placeholder="Type or paste your text here…"></textarea>
+        </div>
+
+        <div id="input-password" style="display:none">
+          <label>Password</label>
+          <div class="input-row">
+            <input type="password" id="password-input" placeholder="Enter password to send…"/>
+            <button class="btn btn-secondary" style="width:auto;padding:0 14px" onclick="togglePasswordVisibility()">👁</button>
+          </div>
+        </div>
+
+        <div id="input-file" style="display:none">
+          <input type="file" id="file-input" onchange="fileSelected(this)"/>
+          <div class="file-drop" id="file-drop"
+            onclick="document.getElementById('file-input').click()"
+            ondragover="fileDragOver(event)" ondragleave="fileDragLeave(event)" ondrop="fileDrop(event)">
+            <div class="icon">📁</div>
+            <div>Click to choose a file, or drag & drop</div>
+            <div style="font-size:11px;margin-top:6px;color:var(--muted)">Any file type · No size limit</div>
+          </div>
+          <div class="file-selected" id="file-selected-info" style="display:none">
+            <div class="file-icon">📄</div>
+            <div class="file-info">
+              <div class="file-name" id="file-name-display"></div>
+              <div class="file-size" id="file-size-display"></div>
+            </div>
+            <button class="remove-file" onclick="clearFile()">✕</button>
+          </div>
+        </div>
+
+        <div class="progress-wrap" id="progress-wrap">
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
+          <div class="progress-label" id="progress-label">Sending…</div>
+        </div>
+
+        <button class="btn btn-primary" id="send-btn" onclick="sendData()">Send →</button>
+      </div>
+    </div>
+
+    <!-- RECEIVE PANEL -->
+    <div class="panel" id="panel-receive">
+      <div class="status-bar">
+        <div class="dot" id="recv-dot"></div>
+        <span id="recv-status">Enter or scan a session code to connect</span>
+      </div>
+
+      <div id="recv-connect-form">
+        <label>Session Code</label>
+        <div class="input-row" style="margin-bottom:16px">
+          <input type="text" id="recv-code-input" placeholder="e.g. 4B29F3" maxlength="6"
+            oninput="this.value=this.value.toUpperCase()"
+            onkeydown="if(event.key==='Enter') connectToPeer()"/>
+          <button class="btn btn-secondary" style="width:auto;padding:0 16px" onclick="connectToPeer()">Connect</button>
+        </div>
+        <button class="btn btn-secondary" onclick="startQRScan()">📷 Scan QR Code</button>
+        <div id="qr-scanner-wrap" style="display:none;margin-top:16px">
+          <video id="qr-video" style="width:100%;border-radius:10px;background:#000" autoplay playsinline></video>
+          <button class="btn btn-secondary" style="margin-top:10px" onclick="stopQRScan()">Stop Scan</button>
+        </div>
+      </div>
+
+      <div id="received-section" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <span style="font-size:13px;font-weight:500;color:var(--muted)">Received Items</span>
+          <button class="btn-small" onclick="clearReceived()">Clear all</button>
+        </div>
+        <div class="received-list" id="received-list"></div>
+      </div>
+
+      <div class="empty-state" id="recv-empty">
+        <div class="icon">📭</div>
+        <p>Nothing received yet.<br>Connect to a sender to get started.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Open source · P2P encrypted · No data stored &nbsp;·&nbsp; <a href="https://github.com/" target="_blank">GitHub</a>
+</footer>
+
+<!-- IDLE DISCONNECT OVERLAY -->
+<div class="idle-overlay" id="idle-overlay">
+  <div class="idle-modal">
+    <div class="icon">⏰</div>
+    <h2>Session Expired</h2>
+    <p>The connection was idle for 5 minutes and has been automatically disconnected. A new session code and QR code have been generated.</p>
+    <button class="btn btn-primary" onclick="dismissIdleOverlay()">Start New Session</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── CONSTANTS ───────────────────────────────────────────────────────────────
+const ITEM_EXPIRY_MS    = 2 * 60 * 1000;   // 2 minutes
+const IDLE_WARN_MS      = 4 * 60 * 1000;   // warn at 4 min
+const IDLE_TIMEOUT_MS   = 5 * 60 * 1000;   // disconnect at 5 min
+const IDLE_REMAIN_WARN  = 60;              // seconds shown in banner
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let peer       = null;
+let sendConn   = null;
+let conn       = null;
+let selectedFile  = null;
+let currentType   = 'text';
+let receivedItems = [];   // { id, type, content, icon, isPassword, fileUrl, fileName, fileSize, expiresAt }
+let fileChunks    = {};
+let qrStream      = null;
+let itemTimerInterval = null;
+
+// Idle tracking
+let lastActivityAt   = Date.now();
+let idleCheckInterval = null;
+let idleWarning       = false;
+
+// ─── IDLE MANAGEMENT ─────────────────────────────────────────────────────────
+function resetIdleTimer() {
+  lastActivityAt = Date.now();
+  idleWarning = false;
+  document.getElementById('idle-banner').classList.remove('show');
+}
+
+function startIdleWatcher() {
+  clearInterval(idleCheckInterval);
+  idleCheckInterval = setInterval(() => {
+    if (!sendConn && !conn) return; // no active connection, nothing to watch
+    const idle = Date.now() - lastActivityAt;
+    if (idle >= IDLE_TIMEOUT_MS) {
+      clearInterval(idleCheckInterval);
+      handleIdleDisconnect();
+    } else if (idle >= IDLE_WARN_MS) {
+      const remaining = Math.ceil((IDLE_TIMEOUT_MS - idle) / 1000);
+      document.getElementById('idle-banner').classList.add('show');
+      document.getElementById('idle-countdown').textContent = remaining;
+    }
+  }, 1000);
+}
+
+function stopIdleWatcher() {
+  clearInterval(idleCheckInterval);
+  document.getElementById('idle-banner').classList.remove('show');
+}
+
+function handleIdleDisconnect() {
+  // Close existing connections
+  try { if (sendConn) sendConn.close(); } catch(e){}
+  try { if (conn) conn.close(); } catch(e){}
+  try { if (peer) peer.destroy(); } catch(e){}
+  sendConn = null; conn = null; peer = null;
+
+  stopIdleWatcher();
+  document.getElementById('idle-overlay').classList.add('show');
+}
+
+function dismissIdleOverlay() {
+  document.getElementById('idle-overlay').classList.remove('show');
+  // Reset send panel UI
+  document.getElementById('qr-section').style.display = 'flex';
+  document.getElementById('waiting-divider').style.display = 'flex';
+  document.getElementById('send-form').style.display = 'none';
+  // Reset receive panel
+  document.getElementById('recv-connect-form').style.display = 'block';
+  document.getElementById('recv-code-input').value = '';
+  setRecvStatus('', 'Enter or scan a session code to connect');
+  // Reboot
+  boot();
+}
+
+// ─── ITEM EXPIRY SYSTEM ──────────────────────────────────────────────────────
+function startItemTimer() {
+  if (itemTimerInterval) return;
+  itemTimerInterval = setInterval(tickItemTimers, 1000);
+}
+
+function tickItemTimers() {
+  const now = Date.now();
+  let changed = false;
+  receivedItems.forEach(item => {
+    if (!item.expired && now >= item.expiresAt) {
+      item.expired = true;
+      changed = true;
+      // Revoke blob URL to free memory
+      if (item.fileUrl) { URL.revokeObjectURL(item.fileUrl); item.fileUrl = null; }
+    }
+  });
+  // Always re-render to update countdowns
+  renderReceived();
+}
+
+// ─── BOOT ────────────────────────────────────────────────────────────────────
+function generateShortId() {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+function boot() {
+  const shortId = generateShortId();
+  peer = new Peer(shortId, { debug: 0 });
+
+  setSendStatus('connecting', 'Generating your session…');
+
+  peer.on('open', id => {
+    document.getElementById('code-display').textContent = id;
+    document.getElementById('qrcode').innerHTML = '';
+    const qrUrl = `${location.origin}${location.pathname}?join=${id}`;
+    new QRCode(document.getElementById('qrcode'), {
+      text: qrUrl, width: 160, height: 160,
+      colorDark: '#000000', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    setSendStatus('connecting', 'Share this code or QR with the receiver');
+    resetIdleTimer();
+  });
+
+  peer.on('connection', c => {
+    sendConn = c;
+    sendConn.on('open', () => {
+      setSendStatus('connected', '🟢 Connected! Ready to send.');
+      document.getElementById('qr-section').style.display = 'none';
+      document.getElementById('waiting-divider').style.display = 'none';
+      document.getElementById('send-form').style.display = 'block';
+      resetIdleTimer();
+      startIdleWatcher();
+    });
+    sendConn.on('close', () => {
+      setSendStatus('error', 'Receiver disconnected.');
+      stopIdleWatcher();
+    });
+    sendConn.on('error', () => setSendStatus('error', 'Connection error.'));
+  });
+
+  peer.on('error', e => {
+    if (e.type === 'unavailable-id') { peer.destroy(); peer = null; boot(); }
+    else setSendStatus('error', 'Error: ' + e.message);
+  });
+
+  // Auto-join via URL
+  const params = new URLSearchParams(location.search);
+  const joinCode = params.get('join');
+  if (joinCode) {
+    switchTab('receive');
+    setTimeout(() => {
+      document.getElementById('recv-code-input').value = joinCode;
+      connectToPeer();
+    }, 600);
+  }
+}
+
+// ─── TABS ────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', (i===0 && tab==='send')||(i===1 && tab==='receive'));
+  });
+  document.querySelectorAll('.panel').forEach((p, i) => {
+    p.classList.toggle('active', (i===0 && tab==='send')||(i===1 && tab==='receive'));
+  });
+}
+
+// ─── CONNECT (RECEIVER SIDE) ──────────────────────────────────────────────────
+function connectToPeer() {
+  const code = document.getElementById('recv-code-input').value.trim().toUpperCase();
+  if (code.length < 4) return showToast('Enter the session code first.');
+  setRecvStatus('connecting', 'Connecting…');
+
+  const recvPeer = new Peer({ debug: 0 });
+  recvPeer.on('open', () => {
+    conn = recvPeer.connect(code, { reliable: true });
+    conn.on('open', () => {
+      setRecvStatus('connected', `🟢 Connected to sender`);
+      document.getElementById('recv-connect-form').style.display = 'none';
+      stopQRScan();
+      resetIdleTimer();
+      startIdleWatcher();
+      startItemTimer();
+    });
+    conn.on('data', data => {
+      resetIdleTimer(); // any data = activity
+      handleReceived(data);
+    });
+    conn.on('error', () => setRecvStatus('error', 'Failed to connect. Check the code.'));
+    conn.on('close', () => { setRecvStatus('error', 'Sender disconnected.'); stopIdleWatcher(); });
+  });
+  recvPeer.on('error', e => setRecvStatus('error', 'Error: ' + e.message));
+}
+
+// ─── SEND ────────────────────────────────────────────────────────────────────
+async function sendData() {
+  if (!sendConn) return showToast('Not connected to a receiver!');
+  resetIdleTimer();
+
+  if (currentType === 'text') {
+    const val = document.getElementById('text-input').value.trim();
+    if (!val) return showToast('Enter some text first.');
+    sendConn.send({ type: 'text', content: val });
+    showToast('Text sent! ✓');
+    document.getElementById('text-input').value = '';
+  } else if (currentType === 'password') {
+    const val = document.getElementById('password-input').value;
+    if (!val) return showToast('Enter a password first.');
+    sendConn.send({ type: 'password', content: val });
+    showToast('Password sent! ✓');
+    document.getElementById('password-input').value = '';
+  } else if (currentType === 'file') {
+    if (!selectedFile) return showToast('Select a file first.');
+    await sendFile(selectedFile);
+  }
+}
+
+async function sendFile(file) {
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  const CHUNK = 64 * 1024;
+  const totalChunks = Math.ceil(file.size / CHUNK);
+  const fileId = Date.now().toString();
+
+  sendConn.send({ type: 'file-start', fileId, name: file.name, size: file.size, mimeType: file.type || 'application/octet-stream', totalChunks });
+
+  const progress = document.getElementById('progress-wrap');
+  const fill = document.getElementById('progress-fill');
+  const label = document.getElementById('progress-label');
+  progress.classList.add('show');
+
+  let chunkIndex = 0;
+  function sendNext() {
+    if (chunkIndex >= totalChunks) {
+      sendConn.send({ type: 'file-end', fileId });
+      progress.classList.remove('show');
+      btn.disabled = false;
+      showToast('File sent! ✓');
+      clearFile();
+      resetIdleTimer();
+      return;
+    }
+    const start = chunkIndex * CHUNK;
+    const slice = file.slice(start, Math.min(start + CHUNK, file.size));
+    const fr = new FileReader();
+    fr.onload = e => {
+      sendConn.send({ type: 'file-chunk', fileId, index: chunkIndex, data: e.target.result });
+      chunkIndex++;
+      const pct = Math.round((chunkIndex / totalChunks) * 100);
+      fill.style.width = pct + '%';
+      label.textContent = `Sending… ${pct}% (${formatSize(chunkIndex * CHUNK)} / ${formatSize(file.size)})`;
+      if (chunkIndex % 16 === 0) setTimeout(sendNext, 10);
+      else sendNext();
+    };
+    fr.readAsArrayBuffer(slice);
+  }
+  sendNext();
+}
+
+// ─── RECEIVE HANDLER ─────────────────────────────────────────────────────────
+function handleReceived(data) {
+  if (data.type === 'text') {
+    addReceived({ type: 'Text', icon: '📝', content: data.content });
+  } else if (data.type === 'password') {
+    addReceived({ type: 'Password', icon: '🔑', content: data.content, isPassword: true });
+  } else if (data.type === 'file-start') {
+    fileChunks[data.fileId] = { name: data.name, size: data.size, mimeType: data.mimeType, totalChunks: data.totalChunks, chunks: [], received: 0 };
+  } else if (data.type === 'file-chunk') {
+    const f = fileChunks[data.fileId];
+    if (f) { f.chunks[data.index] = data.data; f.received++; }
+  } else if (data.type === 'file-end') {
+    const f = fileChunks[data.fileId];
+    if (!f) return;
+    const blob = new Blob(f.chunks, { type: f.mimeType });
+    const url = URL.createObjectURL(blob);
+    addReceived({ type: 'File', icon: '📎', content: f.name, fileUrl: url, fileName: f.name, fileSize: f.size });
+    delete fileChunks[data.fileId];
+  }
+}
+
+function addReceived(item) {
+  item.id = Date.now() + Math.random();
+  item.time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  item.expiresAt = Date.now() + ITEM_EXPIRY_MS;
+  item.expired = false;
+  receivedItems.unshift(item);
+  renderReceived();
+  showToast(`${item.icon} New ${item.type} received!`);
+  startItemTimer();
+}
+
+function renderReceived() {
+  const list    = document.getElementById('received-list');
+  const empty   = document.getElementById('recv-empty');
+  const section = document.getElementById('received-section');
+
+  if (receivedItems.length === 0) {
+    section.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  section.style.display = 'block';
+  empty.style.display = 'none';
+
+  const now = Date.now();
+
+  list.innerHTML = receivedItems.map((item, i) => {
+    const remainMs  = Math.max(0, item.expiresAt - now);
+    const remainSec = Math.ceil(remainMs / 1000);
+    const pct       = (remainMs / ITEM_EXPIRY_MS) * 100;
+    const isWarn    = remainSec <= 30;
+    const isDanger  = remainSec <= 10;
+    const barColor  = isDanger ? 'var(--danger)' : isWarn ? 'var(--warning)' : 'var(--success)';
+    const countClass = isDanger ? 'danger' : isWarn ? 'warning' : '';
+
+    const expiredLabel = item.expired
+      ? `<span style="font-size:11px;color:var(--danger);font-weight:600">⛔ Expired</span>`
+      : `<span class="expiry-countdown ${countClass}">${formatTime(remainSec)}</span>`;
+
+    let contentHtml = '';
+    if (item.expired) {
+      contentHtml = `<div class="received-content" style="color:var(--muted);font-style:italic">This item has expired and been removed.</div>`;
+    } else if (item.isPassword) {
+      contentHtml = `<div class="received-content password" id="pw-${i}">••••••••</div>`;
+    } else if (item.fileUrl) {
+      contentHtml = `<div class="received-content">${escHtml(item.content)} <span style="color:var(--muted);font-size:11px">(${formatSize(item.fileSize)})</span></div>`;
+    } else {
+      contentHtml = `<div class="received-content">${escHtml(item.content)}</div>`;
+    }
+
+    let actionsHtml = '';
+    if (!item.expired) {
+      if (item.isPassword) {
+        actionsHtml += `<button class="btn-small" onclick="toggleReveal(${i})">👁 Reveal</button>`;
+        actionsHtml += `<button class="btn-small" onclick="copyItem(${i}, this)">Copy</button>`;
+      } else if (item.fileUrl) {
+        actionsHtml += `<a class="btn-small download" href="${item.fileUrl}" download="${item.fileName}">⬇ Download</a>`;
+      } else {
+        actionsHtml += `<button class="btn-small" onclick="copyItem(${i}, this)">Copy</button>`;
+      }
+    }
+
+    return `
+      <div class="received-item ${item.expired ? 'expired' : ''} ${isWarn && !item.expired ? 'expiring' : ''}">
+        <div class="expiry-bar-wrap">
+          <div class="expiry-bar" style="width:${item.expired ? 0 : pct}%;background:${barColor}"></div>
+        </div>
+        <div class="received-item-header">
+          <span class="received-type">${item.icon} ${item.type}</span>
+          <div class="received-meta">
+            <span class="received-time">${item.time}</span>
+            ${expiredLabel}
+          </div>
+        </div>
+        ${contentHtml}
+        ${actionsHtml ? `<div class="received-actions">${actionsHtml}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m > 0 ? `${m}:${String(s).padStart(2,'0')}` : `0:${String(s).padStart(2,'0')}`;
+}
+
+function toggleReveal(i) {
+  const el = document.getElementById('pw-' + i);
+  if (el) el.textContent = el.textContent === '••••••••' ? receivedItems[i].content : '••••••••';
+}
+
+function copyItem(i, btn) {
+  navigator.clipboard.writeText(receivedItems[i].content).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('success');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('success'); }, 1500);
+  });
+}
+
+function clearReceived() {
+  receivedItems.forEach(item => { if (item.fileUrl) URL.revokeObjectURL(item.fileUrl); });
+  receivedItems = [];
+  renderReceived();
+}
+
+// ─── FILE HANDLING ────────────────────────────────────────────────────────────
+function fileSelected(input) { if (input.files[0]) showFile(input.files[0]); }
+function showFile(file) {
+  selectedFile = file;
+  document.getElementById('file-drop').style.display = 'none';
+  document.getElementById('file-selected-info').style.display = 'flex';
+  document.getElementById('file-name-display').textContent = file.name;
+  document.getElementById('file-size-display').textContent = formatSize(file.size);
+}
+function clearFile() {
+  selectedFile = null;
+  document.getElementById('file-input').value = '';
+  document.getElementById('file-drop').style.display = 'block';
+  document.getElementById('file-selected-info').style.display = 'none';
+}
+function fileDragOver(e) { e.preventDefault(); document.getElementById('file-drop').classList.add('dragover'); }
+function fileDragLeave() { document.getElementById('file-drop').classList.remove('dragover'); }
+function fileDrop(e) { e.preventDefault(); fileDragLeave(); if (e.dataTransfer.files[0]) showFile(e.dataTransfer.files[0]); }
+
+// ─── TYPE SWITCHER ────────────────────────────────────────────────────────────
+function setType(type, btn) {
+  currentType = type;
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('input-text').style.display     = type === 'text'     ? 'block' : 'none';
+  document.getElementById('input-password').style.display = type === 'password' ? 'block' : 'none';
+  document.getElementById('input-file').style.display     = type === 'file'     ? 'block' : 'none';
+}
+function togglePasswordVisibility() {
+  const inp = document.getElementById('password-input');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// ─── QR SCANNER ───────────────────────────────────────────────────────────────
+async function startQRScan() {
+  if (!('BarcodeDetector' in window)) { showToast('QR scan not supported here. Enter the code manually.'); return; }
+  document.getElementById('qr-scanner-wrap').style.display = 'block';
+  try {
+    qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const video = document.getElementById('qr-video');
+    video.srcObject = qrStream;
+    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    async function scan() {
+      if (!qrStream) return;
+      try {
+        const codes = await detector.detect(video);
+        if (codes.length > 0) {
+          const match = codes[0].rawValue.match(/[?&]join=([A-Z0-9]+)/i);
+          if (match) { document.getElementById('recv-code-input').value = match[1].toUpperCase(); stopQRScan(); connectToPeer(); return; }
+        }
+      } catch {}
+      requestAnimationFrame(scan);
+    }
+    video.onloadedmetadata = () => scan();
+  } catch { showToast('Camera access denied.'); document.getElementById('qr-scanner-wrap').style.display = 'none'; }
+}
+function stopQRScan() {
+  if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
+  document.getElementById('qr-scanner-wrap').style.display = 'none';
+}
+
+// ─── STATUS HELPERS ───────────────────────────────────────────────────────────
+function setSendStatus(state, msg) {
+  document.getElementById('send-dot').className = 'dot ' + (state === 'connected' ? 'connected' : state === 'error' ? 'error' : 'connecting');
+  document.getElementById('send-status').textContent = msg;
+}
+function setRecvStatus(state, msg) {
+  document.getElementById('recv-dot').className = 'dot ' + (state === 'connected' ? 'connected' : state === 'error' ? 'error' : state === '' ? '' : 'connecting');
+  document.getElementById('recv-status').textContent = msg;
+}
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+function copyCode() { navigator.clipboard.writeText(document.getElementById('code-display').textContent).then(() => showToast('Code copied!')); }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+function formatSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1024*1024*1024) return (b/1024/1024).toFixed(1) + ' MB';
+  return (b/1024/1024/1024).toFixed(2) + ' GB';
+}
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
+
+// ─── START ────────────────────────────────────────────────────────────────────
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>
