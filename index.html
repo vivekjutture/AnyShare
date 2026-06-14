@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AnyShare — Frictionless device sharing</title>
+    <title>ShareDrop — Frictionless device sharing</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <style>
@@ -706,7 +706,7 @@
   </head>
   <body>
     <nav>
-      <div class="logo">⚡ AnyShare</div>
+      <div class="logo">⚡ ShareDrop</div>
       <div class="badge">P2P · Encrypted · Free</div>
     </nav>
 
@@ -945,6 +945,25 @@
     <div class="toast" id="toast"></div>
 
     <script>
+      // ─── ICE / STUN CONFIG ───────────────────────────────────────────────────────
+      // Multiple free public STUN servers for maximum compatibility across networks,
+      // firewalls, NAT types, and mobile carriers (4G/5G). No signup needed.
+      const ICE_CONFIG = {
+        config: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" },
+            { urls: "stun:stun3.l.google.com:19302" },
+            { urls: "stun:stun4.l.google.com:19302" },
+            { urls: "stun:stun.cloudflare.com:3478" },
+            { urls: "stun:stun.stunprotocol.org:3478" },
+          ],
+          iceCandidatePoolSize: 10,
+        },
+        debug: 0,
+      };
+
       // ─── CONSTANTS ───────────────────────────────────────────────────────────────
       const ITEM_EXPIRY_MS = 2 * 60 * 1000; // 2 minutes
       const IDLE_WARN_MS = 4 * 60 * 1000; // warn at 4 min
@@ -1057,20 +1076,9 @@
         return Math.random().toString(36).substring(2, 8).toUpperCase();
       }
 
-      const peerConfig = {
-        debug: 0,
-        config: {
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" },
-          ],
-        },
-      };
-
       function boot() {
         const shortId = generateShortId();
-
-        peer = new Peer(shortId, peerConfig);
+        peer = new Peer(shortId, ICE_CONFIG);
 
         setSendStatus("connecting", "Generating your session…");
 
@@ -1157,7 +1165,7 @@
         if (code.length < 4) return showToast("Enter the session code first.");
         setRecvStatus("connecting", "Connecting…");
 
-        const recvPeer = new Peer(peerConfig);
+        const recvPeer = new Peer(ICE_CONFIG);
         recvPeer.on("open", () => {
           conn = recvPeer.connect(code, { reliable: true });
           conn.on("open", () => {
