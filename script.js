@@ -35,10 +35,35 @@
 //    replace the credentials below. See README.md for steps.
 const ICE_CONFIG = {
   iceServers: [
+    // STUN — lets each peer discover its own public IP:port.
+    // Enough for same-LAN / simple home-router (cone) NATs.
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:global.stun.twilio.com:3478" },
+    { urls: "stun:stun.relay.metered.ca:80" },
+
+    // TURN — RELAYS the traffic when a direct P2P link is impossible.
+    // This is what makes 4G/5G phones work: mobile carriers sit behind
+    // Carrier-Grade / Symmetric NAT that STUN can NOT punch through.
+    // The :443?transport=tcp entry is the most important one — it looks
+    // like ordinary HTTPS traffic, so it survives carriers that block UDP.
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
   ],
+  // Pre-gather a few candidates so relay negotiation starts sooner on mobile.
+  iceCandidatePoolSize: 4,
 };
 
 /* ── 2. CONSTANTS ─────────────────────────────────────────── */
@@ -68,7 +93,7 @@ function generateShortId() {
 
 function boot() {
   const shortId = generateShortId();
-  peer = new Peer(shortId, { config: { iceServers: ICE_CONFIG.iceServers } });
+  peer = new Peer(shortId, { config: ICE_CONFIG });
 
   setSendStatus("connecting", "Generating your session…");
 
@@ -251,7 +276,7 @@ function connectToPeer() {
     showRetryButton();
   }, 15000);
 
-  const recvPeer = new Peer({ config: { iceServers: ICE_CONFIG.iceServers } });
+  const recvPeer = new Peer({ config: ICE_CONFIG });
 
   recvPeer.on("open", () => {
     conn = recvPeer.connect(code, { reliable: true, serialization: "binary" });
