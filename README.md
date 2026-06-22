@@ -1,4 +1,4 @@
-# ⚡ AnyShare
+# ⚡ AnyShare ⚡
 
 Share passwords, text snippets, and files between any two devices — **no installs, no accounts, no servers, no cost.**
 
