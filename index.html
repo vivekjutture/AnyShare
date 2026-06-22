@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AnyShare — Share anything, instantly</title>
 
-    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -13,21 +12,17 @@
       rel="stylesheet"
     />
 
-    <!-- Styles -->
     <link rel="stylesheet" href="style.css" />
 
-    <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   </head>
   <body>
-    <!-- ── NAVBAR ─────────────────────────────────────────────── -->
     <nav>
       <div class="logo">⚡ AnyShare</div>
       <div class="badge">P2P · Encrypted · Free</div>
     </nav>
 
-    <!-- ── MAIN ───────────────────────────────────────────────── -->
     <main>
       <div class="hero">
         <h1>Share anything,<br /><span>instantly.</span></h1>
@@ -38,7 +33,6 @@
       </div>
 
       <div class="card">
-        <!-- Idle warning banner -->
         <div class="idle-banner" id="idle-banner">
           ⏱
           <span
@@ -47,7 +41,6 @@
           >
         </div>
 
-        <!-- Tabs -->
         <div class="tabs">
           <button class="tab active" onclick="switchTab('send')">
             📤 Send
@@ -55,14 +48,12 @@
           <button class="tab" onclick="switchTab('receive')">📥 Receive</button>
         </div>
 
-        <!-- ── SEND PANEL ──────────────────────────────────────── -->
         <div class="panel active" id="panel-send">
           <div class="status-bar">
             <div class="dot" id="send-dot"></div>
             <span id="send-status">Generating your session…</span>
           </div>
 
-          <!-- QR + Code display -->
           <div class="qr-section" id="qr-section">
             <div id="qrcode"></div>
             <div class="code-display">
@@ -76,9 +67,7 @@
             waiting for receiver to connect
           </div>
 
-          <!-- Send form (shown after receiver connects) -->
           <div class="send-form" id="send-form" style="display: none">
-            <!-- Type switcher -->
             <div class="type-switcher">
               <button class="type-btn active" onclick="setType('text', this)">
                 📝 Text
@@ -91,7 +80,6 @@
               </button>
             </div>
 
-            <!-- Text input -->
             <div id="input-text">
               <label>Message</label>
               <textarea
@@ -100,7 +88,6 @@
               ></textarea>
             </div>
 
-            <!-- Password input -->
             <div id="input-password" style="display: none">
               <label>Password</label>
               <div class="input-row">
@@ -119,7 +106,6 @@
               </div>
             </div>
 
-            <!-- File input -->
             <div id="input-file" style="display: none">
               <input
                 type="file"
@@ -152,7 +138,6 @@
               </div>
             </div>
 
-            <!-- Send progress -->
             <div class="progress-wrap" id="progress-wrap">
               <div class="progress-bar-bg">
                 <div class="progress-bar-fill" id="progress-fill"></div>
@@ -166,7 +151,6 @@
           </div>
         </div>
 
-        <!-- ── RECEIVE PANEL ───────────────────────────────────── -->
         <div class="panel" id="panel-receive">
           <div class="status-bar">
             <div class="dot" id="recv-dot"></div>
@@ -175,7 +159,6 @@
             >
           </div>
 
-          <!-- Connect form -->
           <div id="recv-connect-form">
             <label>Session Code</label>
             <div class="input-row" style="margin-bottom: 16px">
@@ -199,7 +182,6 @@
               📷 Scan QR Code
             </button>
 
-            <!-- Camera scanner -->
             <div id="qr-scanner-wrap" style="display: none; margin-top: 16px">
               <video
                 id="qr-video"
@@ -217,7 +199,6 @@
             </div>
           </div>
 
-          <!-- Received items list -->
           <div id="received-section" style="display: none">
             <div class="received-section-header">
               <span class="received-section-title">Received Items</span>
@@ -228,7 +209,6 @@
             <div class="received-list" id="received-list"></div>
           </div>
 
-          <!-- Empty state -->
           <div class="empty-state" id="recv-empty">
             <div class="icon">📭</div>
             <p>
@@ -237,16 +217,13 @@
           </div>
         </div>
       </div>
-      <!-- .card -->
     </main>
 
-    <!-- ── FOOTER ─────────────────────────────────────────────── -->
     <footer>
       Open source · P2P encrypted · No data stored &nbsp;·&nbsp;
       <a href="https://github.com/" target="_blank">GitHub</a>
     </footer>
 
-    <!-- ── IDLE DISCONNECT OVERLAY ────────────────────────────── -->
     <div class="idle-overlay" id="idle-overlay">
       <div class="idle-modal">
         <div class="icon">⏰</div>
@@ -261,10 +238,8 @@
       </div>
     </div>
 
-    <!-- Toast notification -->
     <div class="toast" id="toast"></div>
 
-    <!-- App logic -->
     <script src="script.js"></script>
   </body>
 </html>
