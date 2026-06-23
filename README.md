@@ -6,11 +6,31 @@ Built with **WebRTC (PeerJS)** for direct peer-to-peer transfer. Deployable for 
 
 ---
 
+## ✨ Features
+
+- **Send text, passwords, and files** between any two devices over a direct
+  encrypted P2P link.
+- **Both sides see a live list** — the sender sees its **Sent Items**, the
+  receiver sees its **Received Items**.
+- **Scrollable text view with line numbers** — large pastes (1000+ lines) stay
+  inside a fixed-height, scrollable block, so the page never balloons. You
+  scroll within the block, not the whole page.
+- **One-tap copy** — a large, touch-friendly **Copy** button below each item
+  with a clear "✓ Copied!" confirmation. Passwords are masked with a
+  **Reveal/Hide** toggle; files get a **Download** button.
+- **Connect by code or QR** — scan the QR (or open the `?join=CODE` link) to
+  auto-connect.
+
+---
+
 ## ⚙️ Behaviour notes
 
-- **Received items expire after 2 minutes** (live countdown + auto-cleanup).
-- **Connections auto-disconnect after 5 minutes idle**, then regenerate a
-  fresh code + QR.
+- **Items expire after 2 minutes** on **both** the sender and receiver. When
+  the countdown ends the item is **silently removed** from the list — no
+  leftover "expired" placeholder.
+- **Connections auto-disconnect after 5 minutes idle.** Clicking **Start New
+  Session** on the timeout popup does a **full page reload** so the app starts
+  cleanly with a fresh code + QR.
 - **Files are chunked** (64 KB) so there's no size limit.
 - All transfers are **end-to-end encrypted** by WebRTC (DTLS) by default.
 

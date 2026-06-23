@@ -149,6 +149,14 @@
               Send →
             </button>
           </div>
+
+          <div id="sent-section" style="display: none">
+            <div class="received-section-header">
+              <span class="received-section-title">Sent Items</span>
+              <button class="btn-small" onclick="clearSent()">Clear all</button>
+            </div>
+            <div class="received-list" id="sent-list"></div>
+          </div>
         </div>
 
         <div class="panel" id="panel-receive">
@@ -221,7 +229,6 @@
 
     <footer>
       Open source · P2P encrypted · No data stored &nbsp;·&nbsp;
-      <a href="https://github.com/" target="_blank">GitHub</a>
     </footer>
 
     <div class="idle-overlay" id="idle-overlay">

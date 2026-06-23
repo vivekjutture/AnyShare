@@ -78,7 +78,9 @@ let sendConn = null; // active sender→receiver DataConnection
 let conn = null; // active receiver→sender DataConnection
 let selectedFile = null; // file staged for sending
 let currentType = "text"; // 'text' | 'password' | 'file'
-let receivedItems = []; // array of received item objects
+let sentItems = []; // array of items THIS device has sent
+let receivedItems = []; // array of items THIS device has received
+let itemSeq = 0; // monotonic id source for items
 let fileChunks = {}; // in-flight file chunk buffers keyed by fileId
 let qrStream = null; // MediaStream from QR camera scanner
 
@@ -224,17 +226,9 @@ function handleIdleDisconnect() {
 }
 
 function dismissIdleOverlay() {
-  document.getElementById("idle-overlay").classList.remove("show");
-  // Reset Send panel UI back to QR waiting state
-  document.getElementById("qr-section").style.display = "flex";
-  document.getElementById("waiting-divider").style.display = "flex";
-  document.getElementById("send-form").style.display = "none";
-  // Reset Receive panel
-  document.getElementById("recv-connect-form").style.display = "block";
-  document.getElementById("recv-code-input").value = "";
-  setRecvStatus("", "Enter or scan a session code to connect");
-  // Start fresh
-  boot();
+  // Full page reload so the app starts cleanly with a brand-new session
+  // instead of trying to regenerate state in the existing page.
+  location.reload();
 }
 
 /* ── 7. ITEM EXPIRY SYSTEM ────────────────────────────────── */
@@ -245,17 +239,70 @@ function startItemTimer() {
 
 function tickItemTimers() {
   const now = Date.now();
-  receivedItems.forEach((item) => {
-    if (!item.expired && now >= item.expiresAt) {
-      item.expired = true;
-      // Free the blob URL to release memory
-      if (item.fileUrl) {
-        URL.revokeObjectURL(item.fileUrl);
-        item.fileUrl = null;
-      }
+
+  // Silently drop expired items from BOTH lists (no "expired" placeholder).
+  const sentChanged = expireList(sentItems, now);
+  const recvChanged = expireList(receivedItems, now);
+
+  // Update the live countdowns of the survivors WITHOUT rebuilding the DOM —
+  // this keeps the page fast even when an item holds 1000+ lines of text.
+  updateCountdowns(sentItems, now);
+  updateCountdowns(receivedItems, now);
+
+  if (sentChanged) renderSent();
+  if (recvChanged) renderReceived();
+
+  // Nothing left to track — stop the interval until the next item arrives.
+  if (sentItems.length === 0 && receivedItems.length === 0) {
+    clearInterval(itemTimerInterval);
+    itemTimerInterval = null;
+  }
+}
+
+// Remove (and free) any items past their expiry. Returns true if list changed.
+function expireList(items, now) {
+  let changed = false;
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (now >= items[i].expiresAt) {
+      if (items[i].fileUrl) URL.revokeObjectURL(items[i].fileUrl);
+      items.splice(i, 1);
+      changed = true;
     }
+  }
+  return changed;
+}
+
+// Update each surviving card's countdown + expiry bar in place.
+function updateCountdowns(items, now) {
+  items.forEach((item) => {
+    const card = document.querySelector(`[data-id="${item.id}"]`);
+    if (!card) return;
+
+    const remainMs = Math.max(0, item.expiresAt - now);
+    const remainSec = Math.ceil(remainMs / 1000);
+    const pct = (remainMs / ITEM_EXPIRY_MS) * 100;
+    const isWarn = remainSec <= 30;
+    const isDanger = remainSec <= 10;
+
+    const bar = card.querySelector(".expiry-bar");
+    if (bar) {
+      bar.style.width = pct + "%";
+      bar.style.background = isDanger
+        ? "var(--danger)"
+        : isWarn
+          ? "var(--warning)"
+          : "var(--success)";
+    }
+
+    const cd = card.querySelector(".expiry-countdown");
+    if (cd) {
+      cd.textContent = formatTime(remainSec);
+      cd.className =
+        "expiry-countdown" + (isDanger ? " danger" : isWarn ? " warning" : "");
+    }
+
+    card.classList.toggle("expiring", isWarn);
   });
-  renderReceived(); // re-render every second to update countdowns
 }
 
 /* ── 8. CONNECT (RECEIVER SIDE) ───────────────────────────── */
@@ -346,12 +393,14 @@ async function sendData() {
     const val = document.getElementById("text-input").value.trim();
     if (!val) return showToast("Enter some text first.");
     sendConn.send({ type: "text", content: val });
+    addSent({ type: "Text", icon: "📝", content: val });
     showToast("Text sent! ✓");
     document.getElementById("text-input").value = "";
   } else if (currentType === "password") {
     const val = document.getElementById("password-input").value;
     if (!val) return showToast("Enter a password first.");
     sendConn.send({ type: "password", content: val });
+    addSent({ type: "Password", icon: "🔑", content: val, isPassword: true });
     showToast("Password sent! ✓");
     document.getElementById("password-input").value = "";
   } else if (currentType === "file") {
@@ -391,6 +440,15 @@ async function sendFile(file) {
       sendConn.send({ type: "file-end", fileId });
       progressWrap.classList.remove("show");
       btn.disabled = false;
+      // Show it in the sender's own list too (local URL — re-downloadable).
+      addSent({
+        type: "File",
+        icon: "📎",
+        content: file.name,
+        fileUrl: URL.createObjectURL(file),
+        fileName: file.name,
+        fileSize: file.size,
+      });
       showToast("File sent! ✓");
       clearFile();
       resetIdleTimer();
@@ -468,97 +526,132 @@ function handleReceived(data) {
   }
 }
 
-function addReceived(item) {
-  item.id = Date.now() + Math.random();
+// Shared: stamp an item with id/time/expiry and prepend to a list.
+function addItem(items, item) {
+  item.id = ++itemSeq;
   item.time = new Date().toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
   item.expiresAt = Date.now() + ITEM_EXPIRY_MS;
-  item.expired = false;
-  receivedItems.unshift(item);
-  renderReceived();
-  showToast(`${item.icon} New ${item.type} received!`);
+  item.revealed = false;
+  items.unshift(item);
   startItemTimer();
 }
 
-/* ── 12. RENDER RECEIVED ITEMS ────────────────────────────── */
-function renderReceived() {
-  const list = document.getElementById("received-list");
-  const empty = document.getElementById("recv-empty");
-  const section = document.getElementById("received-section");
+function addReceived(item) {
+  addItem(receivedItems, item);
+  renderReceived();
+  showToast(`${item.icon} New ${item.type} received!`);
+}
 
-  if (receivedItems.length === 0) {
-    section.style.display = "none";
-    empty.style.display = "block";
+function addSent(item) {
+  addItem(sentItems, item);
+  renderSent();
+}
+
+// Look up an item by id across both lists (handlers pass ids, not indexes).
+function findItem(id) {
+  return (
+    sentItems.find((x) => x.id == id) ||
+    receivedItems.find((x) => x.id == id) ||
+    null
+  );
+}
+
+/* ── 12. RENDER ITEMS ─────────────────────────────────────── */
+function renderSent() {
+  renderList(sentItems, "sent-list", null, "sent-section");
+}
+
+function renderReceived() {
+  renderList(receivedItems, "received-list", "recv-empty", "received-section");
+}
+
+// Generic list renderer used by BOTH the sender and receiver panels.
+// Full rebuild only happens on add/remove/reveal — never on the 1s tick.
+function renderList(items, listId, emptyId, sectionId) {
+  const list = document.getElementById(listId);
+  const empty = emptyId ? document.getElementById(emptyId) : null;
+  const section = sectionId ? document.getElementById(sectionId) : null;
+
+  if (items.length === 0) {
+    if (section) section.style.display = "none";
+    if (empty) empty.style.display = "block";
+    list.innerHTML = "";
     return;
   }
 
-  section.style.display = "block";
-  empty.style.display = "none";
+  if (section) section.style.display = "block";
+  if (empty) empty.style.display = "none";
 
-  const now = Date.now();
+  list.innerHTML = items.map(cardHtml).join("");
+}
 
-  list.innerHTML = receivedItems
-    .map((item, i) => {
-      const remainMs = Math.max(0, item.expiresAt - now);
-      const remainSec = Math.ceil(remainMs / 1000);
-      const pct = (remainMs / ITEM_EXPIRY_MS) * 100;
-      const isWarn = remainSec <= 30;
-      const isDanger = remainSec <= 10;
-      const barColor = isDanger
-        ? "var(--danger)"
-        : isWarn
-          ? "var(--warning)"
-          : "var(--success)";
-      const countClass = isDanger ? "danger" : isWarn ? "warning" : "";
+function cardHtml(item) {
+  const remainMs = Math.max(0, item.expiresAt - Date.now());
+  const remainSec = Math.ceil(remainMs / 1000);
+  const pct = (remainMs / ITEM_EXPIRY_MS) * 100;
+  const isWarn = remainSec <= 30;
+  const isDanger = remainSec <= 10;
+  const barColor = isDanger
+    ? "var(--danger)"
+    : isWarn
+      ? "var(--warning)"
+      : "var(--success)";
+  const countClass = isDanger ? "danger" : isWarn ? "warning" : "";
 
-      const expiryLabel = item.expired
-        ? `<span style="font-size:11px;color:var(--danger);font-weight:600">⛔ Expired</span>`
-        : `<span class="expiry-countdown ${countClass}">${formatTime(remainSec)}</span>`;
-
-      // Content area
-      let contentHtml;
-      if (item.expired) {
-        contentHtml = `<div class="received-content" style="color:var(--muted);font-style:italic">This item has expired and been removed.</div>`;
-      } else if (item.isPassword) {
-        contentHtml = `<div class="received-content password" id="pw-${i}">••••••••</div>`;
-      } else if (item.fileUrl) {
-        contentHtml = `<div class="received-content">${escHtml(item.content)} <span style="color:var(--muted);font-size:11px">(${formatSize(item.fileSize)})</span></div>`;
-      } else {
-        contentHtml = `<div class="received-content">${escHtml(item.content)}</div>`;
-      }
-
-      // Action buttons
-      let actionsHtml = "";
-      if (!item.expired) {
-        if (item.isPassword) {
-          actionsHtml += `<button class="btn-small" onclick="toggleReveal(${i})">👁 Reveal</button>`;
-          actionsHtml += `<button class="btn-small" onclick="copyItem(${i}, this)">Copy</button>`;
-        } else if (item.fileUrl) {
-          actionsHtml += `<a class="btn-small download" href="${item.fileUrl}" download="${item.fileName}">⬇ Download</a>`;
-        } else {
-          actionsHtml += `<button class="btn-small" onclick="copyItem(${i}, this)">Copy</button>`;
-        }
-      }
-
-      return `
-      <div class="received-item ${item.expired ? "expired" : ""} ${isWarn && !item.expired ? "expiring" : ""}">
+  return `
+      <div class="received-item${isWarn ? " expiring" : ""}" data-id="${item.id}">
         <div class="expiry-bar-wrap">
-          <div class="expiry-bar" style="width:${item.expired ? 0 : pct}%;background:${barColor}"></div>
+          <div class="expiry-bar" style="width:${pct}%;background:${barColor}"></div>
         </div>
         <div class="received-item-header">
           <span class="received-type">${item.icon} ${item.type}</span>
           <div class="received-meta">
             <span class="received-time">${item.time}</span>
-            ${expiryLabel}
+            <span class="expiry-countdown ${countClass}">${formatTime(remainSec)}</span>
           </div>
         </div>
-        ${contentHtml}
-        ${actionsHtml ? `<div class="received-actions">${actionsHtml}</div>` : ""}
+        <div class="item-content">${contentHtml(item)}</div>
+        <div class="item-actions">${actionsHtml(item)}</div>
       </div>`;
-    })
-    .join("");
+}
+
+function contentHtml(item) {
+  if (item.fileUrl) {
+    return `<div class="received-content">${escHtml(item.content)} <span style="color:var(--muted);font-size:11px">(${formatSize(item.fileSize)})</span></div>`;
+  }
+  // Text & password both render inside a fixed-height, scrollable code block.
+  return codeBlockHtml(item);
+}
+
+// Scrollable block with a sticky line-number gutter. Two <pre> nodes total,
+// regardless of how many lines — so 1000+ lines stay cheap to render.
+function codeBlockHtml(item) {
+  let text = item.content;
+  if (item.isPassword && !item.revealed) {
+    text = text.replace(/[^\n]/g, "•"); // mask everything but line breaks
+  }
+  const lines = text.split("\n");
+  const gutter = lines.map((_, i) => i + 1).join("\n");
+  const code = lines.map(escCode).join("\n");
+  return `<div class="content-block">
+        <pre class="line-gutter" aria-hidden="true">${gutter}</pre>
+        <pre class="content-code${item.isPassword ? " password" : ""}">${code || " "}</pre>
+      </div>`;
+}
+
+function actionsHtml(item) {
+  if (item.fileUrl) {
+    return `<a class="action-btn download" href="${item.fileUrl}" download="${escAttr(item.fileName)}">⬇ Download</a>`;
+  }
+  let html = "";
+  if (item.isPassword) {
+    html += `<button class="action-btn reveal-btn" onclick="toggleReveal(${item.id})">👁 Reveal</button>`;
+  }
+  html += `<button class="action-btn copy" onclick="copyItem(${item.id}, this)">📋 Copy</button>`;
+  return html;
 }
 
 function formatTime(sec) {
@@ -567,21 +660,31 @@ function formatTime(sec) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function toggleReveal(i) {
-  const el = document.getElementById("pw-" + i);
-  if (el)
-    el.textContent =
-      el.textContent === "••••••••" ? receivedItems[i].content : "••••••••";
+function toggleReveal(id) {
+  const item = findItem(id);
+  if (!item) return;
+  item.revealed = !item.revealed;
+
+  const card = document.querySelector(`[data-id="${item.id}"]`);
+  if (!card) return;
+
+  const holder = card.querySelector(".item-content");
+  if (holder) holder.innerHTML = contentHtml(item);
+
+  const revealBtn = card.querySelector(".reveal-btn");
+  if (revealBtn) revealBtn.textContent = item.revealed ? "🙈 Hide" : "👁 Reveal";
 }
 
-function copyItem(i, btn) {
-  navigator.clipboard.writeText(receivedItems[i].content).then(() => {
-    btn.textContent = "Copied!";
-    btn.classList.add("success");
+function copyItem(id, btn) {
+  const item = findItem(id);
+  if (!item) return;
+  navigator.clipboard.writeText(item.content).then(() => {
+    btn.classList.add("copied");
+    btn.textContent = "✓ Copied!";
     setTimeout(() => {
-      btn.textContent = "Copy";
-      btn.classList.remove("success");
-    }, 1500);
+      btn.classList.remove("copied");
+      btn.textContent = "📋 Copy";
+    }, 1600);
   });
 }
 
@@ -591,6 +694,14 @@ function clearReceived() {
   });
   receivedItems = [];
   renderReceived();
+}
+
+function clearSent() {
+  sentItems.forEach((item) => {
+    if (item.fileUrl) URL.revokeObjectURL(item.fileUrl);
+  });
+  sentItems = [];
+  renderSent();
 }
 
 /* ── 13. FILE HANDLING (DROP ZONE) ───────────────────────── */
@@ -753,6 +864,17 @@ function escHtml(s) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\n/g, "<br>");
+}
+
+// Escape for use inside a <pre> — keeps real newlines (no <br>) so line
+// numbers in the gutter stay aligned with the code rows.
+function escCode(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Escape for use inside a double-quoted HTML attribute.
+function escAttr(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
 /* ── INIT ─────────────────────────────────────────────────── */

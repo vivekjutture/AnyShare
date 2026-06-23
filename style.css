@@ -676,6 +676,114 @@ input[type="file"] {
   flex-wrap: wrap;
 }
 
+/* Scrollable text/password block with a sticky line-number gutter.
+   Fixed max-height keeps the page short even for 1000+ lines — the user
+   scrolls inside the block, not the whole page. */
+.content-block {
+  display: flex;
+  align-items: stretch;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: "SF Mono", "Consolas", "Menlo", monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.line-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 10px 10px;
+  text-align: right;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.25);
+  border-right: 1px solid var(--border);
+  user-select: none;
+  font: inherit;
+  white-space: pre;
+}
+
+.content-code {
+  flex: 1;
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--text);
+  font: inherit;
+  white-space: pre; /* no wrap → line numbers stay aligned; long lines scroll */
+}
+
+.content-code.password {
+  letter-spacing: 2px;
+}
+
+/* Prominent, touch-friendly action buttons below the block. */
+.item-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  flex: 1;
+  min-width: 120px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 9px;
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent2);
+}
+
+.action-btn:active {
+  transform: translateY(1px);
+}
+
+.action-btn.download {
+  border-color: var(--accent);
+  color: var(--accent2);
+}
+
+/* Copied-success feedback state. */
+.action-btn.copy.copied {
+  background: var(--success);
+  border-color: var(--success);
+  color: #06281d;
+  animation: copied-pop 0.3s ease;
+}
+
+@keyframes copied-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 /* ── 14. IDLE BANNER & OVERLAY ────────────────────────────── */
 .idle-banner {
   display: none;
